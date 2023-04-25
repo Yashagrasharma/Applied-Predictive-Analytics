@@ -1,0 +1,479 @@
+---
+title: "HW_Assignement1_Group3"
+output:
+  word_document: default
+  pdf_document: default
+date: "2023-01-16"
+---
+# MAST 6251 Homework 1 - Bike Sharing 
+
+Harsh Tandel : 49045795
+Jakeline Sanchez : 47395469
+Yashagra Sharma : 49000606
+Parag Garg : 49057313
+
+# Dataset Background
+
+Bike sharing systems are new generation of traditional bike rentals where whole process from membership,
+rental and return back has become automatic. Through these systems, user is able to easily rent a bike from
+a particular position and return back at another position. Currently, there are about over 500 bike-sharing
+programs around the world which is composed of over 500 thousands bicycles Hence, it is expected that most of important events in the city could be detected via monitoring these data.
+
+# Objective
+
+In this project, we have performed some exploratory analysis on the Bike Sharing data set, which contains historical data of bike sharing system from the beginning of 2011 to the end of 2012. 
+The data is saved in a comma separated file (CSV) with 12 attributes. Our objective is to complete a regression analysis on the data and the goal is to predict the number of daily bike users. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(broom)
+library(car)
+library(ggplot2)
+library(dplyr)
+```
+#### STEP 1 : Load Data set and Visualize the data. 
+
+```{r include=FALSE}
+data = read.csv("C:/Users/Parag Garg/OneDrive - Southern Methodist University/Desktop/Applied Predictive Analytics/HW1 bikeshare.csv")
+summary(data)
+head(data)
+
+```
+
+```{r include=FALSE}
+str(data)
+```
+### Step 2 (Data Summary)
+
+## Data Summary
+The data shows the number of registered, casual and total users per day depending on the the weather, the temperature, the day of the week, the humidity, the wind speed,the month, the season, if it is a weekend or a holiday and the year (2011 or 2012). Assuming that both registered and casual users pay per trip, we decided to take the total count in all our model, because to maximize revenue one must maximize the total count.
+
+Based on the output of season count and season vs. temperature we can assume that minimum temperature in winter is affecting the customer count. We assumed that the variable weekdays labelled 1 to 5 comprise days Monday to Friday and 0,6 are Sunday & Saturday respectively.
+
+```{r Seasons, echo=FALSE, fig.cap=paste("Boxplot of Temperature by Season")}
+boxplot(temp ~ season,
+        data = data,
+        xlab = "Season",
+        ylab = "Temperature",
+        main = "Temperature by Season",
+        col = "aquamarine")
+```
+#Scatter plot - Shows trend for historical data collected for 2011 and 2012. This scatter plot demonstrates that we have a positive upward rise in counts of daily bike users as the temperature gets warmer in spring and summer. The daily bike user count appears to be low in the fall and winter time frame.
+# Scatter plot of Temperature vs Total users 
+```{r echo=FALSE, warning=FALSE, error=FALSE}
+  ## This is a scatter plot to show relationship of Total user count to temperature
+data$Seasons <- as.factor(ifelse(data$season == 1, 'Winter', ifelse(data$season == 2, 'Spring', ifelse(data$season == 3, 'Summer', 'Fall'))))
+  ggplot(data) +
+  aes(x = cnt, y = temp, colour = Seasons) +
+  geom_point() +
+  scale_color_hue() +
+  xlab("Total Daily Bike Users") +
+  ylab("Temperature") + 
+  ggtitle("Scatter plot of Temperature vs Total Daily Bike Users")
+```
+## 2.Monthly Total user count by season
+Monthly distribution of Total user count by Seasons 
+```{r, echo=FALSE, warning=FALSE, error=FALSE}
+ggplot(data,aes(x=mnth,y=cnt,fill=Seasons))+theme_bw()+geom_col()+
+labs(x='Month',y='Total Daily Users',title='Monthly distribution of Total Bike Users by Season')+
+scale_x_discrete(limits=c("Jan","Feb","Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+```
+### Step 3 (Data Clean-UP)
+
+```{r, include=FALSE}
+library(dplyr)
+library(ggplot2)
+summary(data)
+```
+
+a) Check the Missing Value 
+```{r}
+sum(is.na(data))
+```
+b) Outliers 
+<!-- Temperature Outlier -->
+```{r, include=FALSE}
+Q_temp <- quantile(data$temp, probs=c(.25, .75), na.rm = FALSE)
+iqr_temp <- IQR(data$temp)
+up_temp <-  Q_temp[2]+1.5*iqr_temp # Upper Range  
+low_temp <- Q_temp[1]-1.5*iqr_temp # Lower Range
+up_temp
+low_temp
+out_temp <- ifelse(data$temp > up_temp | data$temp < low_temp, print(data$instant), "")
+out_temp
+which(out_temp > 1)
+```
+<!-- atemp Outlier -->
+```{r, include=FALSE}
+Q_atemp <- quantile(data$atemp, probs=c(.25, .75), na.rm = FALSE)
+iqr_atemp <- IQR(data$atemp)
+up_atemp <-  Q_atemp[2]+1.5*iqr_atemp # Upper Range  
+low_atemp <- Q_atemp[1]-1.5*iqr_atemp # Lower Range
+up_atemp
+low_atemp
+out_atemp <- ifelse(data$atemp > up_atemp | data$atemp < low_atemp, print(data$instant), "")
+out_atemp
+which(out_atemp > 1)
+```
+There are no outliers that exist in the temp or atemp variables.
+<!-- Humidity Outlier -->
+```{r, include=FALSE, fig.cap=paste("Instants 50 and 69 are two outliers for Humidity")}
+Q_hum <- quantile(data$hum, probs=c(.25, .75), na.rm = FALSE)
+iqr_hum <- IQR(data$hum)
+up_hum <-  Q_hum[2]+1.5*iqr_hum # Upper Range  
+low_hum <- Q_hum[1]-1.5*iqr_hum # Lower Range
+#up_hum
+#low_hum
+out_hum <- ifelse(data$hum > up_hum | data$hum < low_hum, data$instant, "")
+which(out_hum > 0)
+```
+Variables 50 and 69 are both outliers in the humidity variable and have really low values. Instant 69 has a value of 0, which indicates that humidity was probably not reported correctly that instant.
+<!-- Windspeed Outlier -->
+```{r, include=FALSE, fig.cap=paste("Windspeed Outliers")}
+Q_windspeed <- quantile(data$windspeed, probs=c(.25, .75), na.rm = FALSE)
+iqr_windspeed <- IQR(data$windspeed)
+up_windspeed <-  Q_windspeed[2]+1.5*iqr_windspeed # Upper Range  
+low_windspeed <- Q_windspeed[1]-1.5*iqr_windspeed # Lower Range
+#up_windspeed
+#low_windspeed
+out_windspeed <- ifelse(data$windspeed > up_windspeed | data$windspeed < low_windspeed, data$instant, "")
+which(out_windspeed > 0)
+```
+Windspeed has more outliers (instants: 45, 50, 94, 95, 293, 383, 408, 421, 433, 434, 451, 667, 722). Instant 50 is an outlier for this variable as well.
+```{r, include=FALSE}
+Q_casual <- quantile(data$casual, probs=c(.25, .75), na.rm = FALSE)
+iqr_casual <- IQR(data$casual)
+up_casual <-  Q_casual[2]+1.5*iqr_casual # Upper Range  
+low_casual <- Q_casual[1]-1.5*iqr_casual # Lower Range
+up_casual
+low_casual
+```
+```{r, include=FALSE}
+Q_registered <- quantile(data$registered, probs=c(.25, .75), na.rm = FALSE)
+iqr_registered <- IQR(data$registered)
+up_registered <-  Q_registered[2]+1.5*iqr_registered # Upper Range  
+low_registered <- Q_registered[1]-1.5*iqr_registered # Lower Range
+up_registered
+low_registered
+```
+<!-- Count Outliers: -->
+```{r, include=FALSE, fig.cap=paste("Outliers of Overall Count")}
+Q_cnt <- quantile(data$cnt, probs=c(.25, .75), na.rm = FALSE)
+iqr_cnt <- IQR(data$cnt)
+up_cnt <-  Q_cnt[2]+1.5*iqr_cnt # Upper Range  
+low_cnt <- Q_cnt[1]-1.5*iqr_cnt # Lower Range
+#up_cnt
+#low_cnt
+out_cnt <- ifelse(data$cnt > up_cnt | data$cnt < low_cnt, data$instant, "")
+which(out_cnt > 0)
+```
+Since we have been looking at the overall count for our analysis, we looked at the overall count to see if any outliers existed. Since there were none, all of the data points are valid
+We will dropping outliers from the data
+```{r}
+for (x in c('hum','windspeed','casual'))
+{
+  value = data[,x][data[,x] %in% boxplot.stats(data[,x])$out]
+  data[,x][data[,x] %in% value] = NA
+} 
+```
+d) verifying dropped outliers
+```{r include=FALSE}
+sum(is.na(data$hum))
+sum(is.na(data$windspeed))
+sum(is.na(data$casual))
+as.data.frame(colSums(is.na(data)))
+```
+
+
+### Graphical Representation 
+### Scatter Plot of Total Users vs Temp and log(temperature)
+The scatter plot in the left figure below displays a linear distribution of data between temperature and count, temperature has the best fit with respect to count. On the right figure the log of the temperature was taken to better fit the data
+```{r, echo=FALSE, fig.cap=paste("Total Users as a function of temperature"), fig.height=2.75}
+scatter.smooth(x=data$temp, y=data$cnt, xlab="Temperature",ylab="Total Users") 
+scatter.smooth(x=log(data$temp), y=data$cnt, xlab="log(Temperature)",ylab="Total Users") 
+```
+##  Bar Plot of Users by Season and Weekdays
+```{r, include=FALSE}
+library(car)
+d2 = lm(cnt~temp,data)
+summary(d2)
+crPlots(d2)
+plot(d2,which = 1)
+```
+
+```{r, include=FALSE}
+crPlots(d2)
+plot(d2,which = 1)
+```
+
+In the following figures, one can observe that the number of bike users is highest in the summer, followed by spring and fall. As expected, demand is higher when the weather is clear as compared to when it is raining/expected to rain. The count of registered bike users is higher during the weekdays (1:5), whereas the count of casual bike users is higher during the weekends (0,6). We could infer that casual users mostly use bikes for local sightseeing and recreation activities, and thus we could consider using targeted marketing strategies for these different segments of users.
+
+```{r, echo=FALSE, fig.height=2.7}
+fig1 <- boxplot(data$cnt~data$season,xlab="Season", ylab="Total users", col="skyblue")
+
+fig4 <- boxplot(data$casual~data$weekday,xlab="Weekdays", ylab="Casual users",  col="yellow4") 
+```
+## Bike Rental Density by Holiday
+```{r,echo=FALSE,fig.width=4, fig.height=2}
+data<- data %>%
+  mutate(holiday_chr =
+           case_when(
+             holiday == 0 ~ "Non-Holiday",
+             holiday == 1 ~ "Holiday"))
+
+ggRentalVolByHoliday <- ggplot(data) +
+  geom_density(aes(x = cnt,
+                   fill = holiday_chr), 
+               alpha = 0.2) +
+  scale_fill_brewer(palette = "Paired") +
+  
+  theme(axis.title = element_text()) + 
+  labs(title = "Bike Rental Density By Holiday",
+       fill = "Holiday",
+       x = "Average Bike Rentals",
+       y = "Density")
+
+ggRentalVolByHoliday
+
+data<- data %>%
+  mutate(workingday_chr =
+           case_when(
+             workingday == 0 ~ "Weekend or Holiday",
+             workingday == 1 ~ "Working day"))
+data<- data %>%
+  mutate(weekday_chr =
+           case_when(
+             weekday == 0 ~ "Monday",
+             weekday == 1 ~ "Tuesday",
+             weekday == 2 ~ "Wednesday",
+             weekday == 3 ~ "Thusday",
+             weekday == 4 ~ "Friday",
+             weekday == 5 ~ "Saturday",
+             weekday == 6 ~ "Sunday"))
+
+```
+
+#### Creating Dummy Variables
+```{r include=FALSE}
+#For weather
+clear <- ifelse(data$weathersit =='1', 1,0)
+cloudy <- ifelse(data$weathersit =='2', 1,0)
+snow <- ifelse(data$weathersit =='3', 1,0)
+rain <- ifelse(data$weathersit =='3', 1,0)
+
+#For seasons
+winter <- ifelse(data$season == '1', 1, 0)
+spring <- ifelse(data$season == '2', 1, 0)
+summer <- ifelse(data$season == '3', 1, 0)
+fall <- ifelse(data$season == '4',1, 0)
+
+#For weekdays
+sun <- ifelse(data$weekday == '0', 1, 0)
+mon <- ifelse(data$weekday == '1', 1, 0)
+tue <- ifelse(data$weekday == '2', 1, 0)
+wed <- ifelse(data$weekday == '3',1, 0)
+thurs <- ifelse(data$weekday == '4',1, 0)
+fri <- ifelse(data$weekday == '5',1, 0)
+
+# update dataset
+data1 <-data.frame(data,
+                  clear = clear, cloudy = cloudy, snow = snow, rain = rain,
+                  winter = winter, spring = spring, summer = summer, fall = fall,
+                  mon = mon, tue = tue, wed = wed, thurs = thurs, fri = fri, sun = sun)
+
+##ensuring data entered the new set
+summary(data1)
+head(data1)
+```
+Regression Model (Multiple Regression to Predict User using Backward Elimination Method)
+
+Determining Model to Predict Users Using Backwards Method 
+```{r message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+#Model 1 (with cnt)
+data1 <- lm(cnt ~ yr + holiday + temp + atemp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs + fri,d=data)
+summary(data1)
+#Removed Most Non-Significant Variable - Friday
+data2 <- lm(cnt ~ yr + holiday + temp + atemp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs,d=data)
+summary(data2)
+#Removed Most Non-Significant Variable - atemp
+data3 <- lm(cnt ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs,d=data)
+summary(data3)
+#Removed Most Non-Significant Variable - Thursday
+data4 <- lm(cnt ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed ,d=data)
+summary(data4)
+#Removed Most Non-Significant Variable - Wednesday
+data5 <- lm(cnt ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue ,d=data)
+summary(data5)
+#Removed Most Non-Significant Variable - Tuesday
+data6 <- lm(cnt ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon ,d=data)
+summary(data6)
+#Removed Most Non-Significant Variable - Monday
+data7 <- lm(cnt ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun ,d=data)
+summary(data7)
+```
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+### Model 2 (with casual).
+reg1 <- lm(casual ~ yr + holiday + temp + atemp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs + fri, d=data)
+summary(reg1)
+#Removed Most Non-Significant Variable - atemp
+reg2 <- lm(casual ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs + fri, d=data)
+summary(reg2)
+```
+
+ 
+
+```{r message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+### Model 3 (with Registered).
+regg1 <- lm(registered ~ yr + holiday + temp + atemp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs + fri, d=data)
+summary(regg1)
+#Removed Most Non-Significant Variable - atemp
+regg2 <- lm(registered ~ yr + holiday + temp + hum + windspeed + clear + cloudy + winter + spring + summer + sun + mon + tue + wed + thurs + fri, d=data)
+summary(regg2)
+```
+
+ Model 1 was the best with cnt with highest R sq values 
+
+## Linear Regression Analysis (How do we explain and visualize this for a manager)
+#### This sections needs some explanation. Need to summarize in English (manager appropriate) language the regression analysis we did and what we concluded from that analysis.
+
+
+## Graphical representation of the 3 models
+```{r echo = FALSE}
+# Generate the plots for Model 1
+plot(data7, which = 1)
+plot(data7, which=2)
+```
+
+```{r echo = FALSE}
+par(mfrow=c(2,3), mar=c(4,4,2,2), mgp=c(2,1,0))
+
+# Generate the plots for Model 2 and 3
+plot(reg2, which = 1)
+plot(regg2, which = 1)
+```
+
+
+#### Model 1 was the best with cnt with highest R sq values #### 
+
+
+## Interaction
+In our final model, there is a statistically significant interaction between weather, temperature, humidity and season.This makes sense because season influences all three. In fall, the total count goes up at a greater rate than in winter when temperature goes up. This can be observed in figure 1.
+```{r, include=FALSE}
+library(tidyverse)
+regInt = glm(cnt~weathersit*temp*hum*windspeed*season,data=data)
+
+summary(regInt)
+```
+
+```{r, include=FALSE}
+data6 = read.csv("C:/Users/Parag Garg/OneDrive - Southern Methodist University/Desktop/Applied Predictive Analytics/HW1 bikeshare.csv")
+season2=data6$season
+```
+```{r}
+hist(data$cnt)
+hist(log(data$cnt))
+```
+#### Correlation matrix
+
+```{r}
+# Correlogram in R
+# required packages
+library(corrplot)
+
+# # show two matrix side-by-side
+# par(mfcol=c(1,2))
+
+contvars <- c("casual", "registered", "cnt", "temp", "atemp", "hum", "windspeed")
+corrmat <- cor(data[,contvars])
+
+# # as colour
+# corrplot(corrmat, method="color")
+
+# as number
+corrplot(corrmat, method="number")
+
+
+```
+temp and attemp are (obviously) highly correlated. Other than these two, the dependent variables do not seem to suffer from such problem. Use only either temp or attemp for model building.
+
+#### Conditional distribution: cnt vs. categorical variables
+```{r}
+data$dteday <- as.factor(data$dteday)
+par(mfcol=c(2,2))
+
+ boxplot(data$cnt ~ data$season,
+        data = data,
+        main = "Total Bike Rentals Vs Season",
+        xlab = "Season",
+        ylab = "Total Bike Rentals"    # need a comma here if use col = c()
+        #col = c("coral", "coral1", "coral2", "coral3")
+        ) 
+ 
+ boxplot(data$cnt ~ data$holiday,
+        data = data,
+        main = "Total Bike Rentals Vs Holiday/Working Day",
+        xlab = "Holiday/Working Day",
+        ylab = "Total Bike Rentals"
+        #col = c("pink", "pink1", "pink2", "pink3")
+        ) 
+
+ boxplot(data$cnt ~ data$weathersit,
+        data = data,
+        main = "Total Bike Rentals Vs Weather Situation",
+        xlab = "Weather Situation",
+        ylab = "Total Bike Rentals"
+        #col = c("purple", "purple1", "purple2", "purple3")
+        ) 
+
+
+plot(data$dteday, data$cnt,type = "p",
+     main = "Total Bike Rentals Vs DateDay",
+     xlab = "Year",
+     ylab = "Total Bike Rentals",
+     col  = "orange",
+     pch  = 19)
+
+```
+```{r, echo=FALSE,  fig.cap=paste("Count of total users as afunction of Temperature: Winter (blue) vs Fall (red) "),fig.width=2, fig.height=2}
+regInt2= glm(cnt~season2*temp,data=data6)
+plotData = data.frame(season2 = quantile(data6$season,c(.1,.1,.9,.9)),
+                      temp    = quantile(data6$temp,c(.1,.9,.1,.9)))
+plotData$Prediction = as.numeric(predict(regInt2,plotData))
+plotData$season2   = factor(plotData$season2)
+ggplot(plotData,aes(x=temp,y=Prediction,color=season2)) + 
+  geom_line() + theme_bw(15) + xlab("Temperature") + ylab("Total users")+ theme(legend.position = "none")
+```
+Calculation for t-test using Y, yhat and intercepts
+```{r , warning=FALSE}
+y    = data$cnt
+yhat = predict(data2)
+n    = length(y)
+p    = 10 #number of predictors in the model, besides the intercept
+
+#RSS: residual sum of squares
+RSS = sum((y-yhat)^2)
+RSS
+
+#note relation to r-squared
+1-RSS/sum((y-mean(y))^2)
+
+#RSE: residual standard error (same as summary(ad4))
+sqrt(RSS/(n-p-1))
+
+#MSE: mean squared error
+mean(sum((y-yhat)^2))
+
+#RMSE: root mean squared error
+sqrt(mean(sum((y-yhat)^2)))
+```
+In our final model, there is a statistically significant interaction between weather, temperature, humidity
+and season.This makes sense because season influences all three. In fall, the total count goes up at a greater
+rate than in winter when temperature goes up. 
+
+A promotion should be run in fall when the temperatures are high because it will have the greatest impact
+on the amount of users.
